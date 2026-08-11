@@ -1,0 +1,15 @@
+{
+  "products": [
+    {
+      "id": "produto-exemplo",
+      "name": "Produto de exemplo",
+      "description": "Descrição do produto monitorado",
+      "keywords": ["produto exemplo"],
+      "max_price": 1000.0,
+      "icon": "📦",
+      "active": true
+    }
+  ],
+  "groups": [],
+  "promotions": []
+}
