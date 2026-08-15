@@ -57,6 +57,17 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == "/api/health":
             self._send_json(200, {"status": "online"})
             return
+        if path == "/api/telegram/groups":
+            data = load_data()
+            self._send_json(
+                200,
+                {
+                    "groups": data.get("telegram_groups", []),
+                    "updated_at": data.get("telegram_groups_updated_at"),
+                    "monitor_running": data.get("telegram_groups_updated_at") is not None,
+                },
+            )
+            return
         self._send_json(404, {"error": "Endpoint não encontrado"})
 
     def do_POST(self):

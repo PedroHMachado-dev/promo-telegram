@@ -27,6 +27,10 @@ function App() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupForm, setGroupForm] = useState(EMPTY_GROUP_FORM);
+  const [showTelegramGroups, setShowTelegramGroups] = useState(false);
+  const [telegramGroups, setTelegramGroups] = useState([]);
+  const [loadingTelegramGroups, setLoadingTelegramGroups] = useState(false);
+  const [telegramGroupsUpdatedAt, setTelegramGroupsUpdatedAt] = useState(null);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -121,6 +125,42 @@ function App() {
     }
   };
 
+  const findTelegramGroups = async () => {
+    setLoadingTelegramGroups(true);
+    setError("");
+    try {
+      const response = await fetch("/api/telegram/groups");
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Não foi possível buscar os grupos");
+      setTelegramGroups(Array.isArray(result.groups) ? result.groups : []);
+      setTelegramGroupsUpdatedAt(result.updated_at ?? null);
+      setShowTelegramGroups(true);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoadingTelegramGroups(false);
+    }
+  };
+
+  const addTelegramGroup = async (group) => {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: group.id, name: group.name }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Não foi possível adicionar o grupo");
+      await loadDashboard();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const stats = dashboard?.stats ?? { products: 0, groups: 0, promotions: 0, status: "offline" };
   const apiStatus = typeof stats.status === "string" ? stats.status.toUpperCase() : "ONLINE";
 
@@ -168,10 +208,45 @@ function App() {
           <section className="groups-section">
             <div className="section-header">
               <div><span className="section-label">FONTES</span><h2>Grupos do Telegram</h2></div>
-              <button type="button" onClick={() => setShowGroupForm((visible) => !visible)}>
-                {showGroupForm ? "Cancelar" : "+ Adicionar grupo"}
-              </button>
+              <div className="section-actions">
+                <button className="secondary-button" type="button" onClick={findTelegramGroups} disabled={loadingTelegramGroups}>
+                  {loadingTelegramGroups ? "Buscando..." : "Buscar no Telegram"}
+                </button>
+                <button type="button" onClick={() => setShowGroupForm((visible) => !visible)}>
+                  {showGroupForm ? "Cancelar" : "+ Informar ID"}
+                </button>
+              </div>
             </div>
+
+            {showTelegramGroups && (
+              <div className="telegram-picker">
+                <div className="picker-header">
+                  <div>
+                    <strong>Grupos e canais disponíveis</strong>
+                    <span>
+                      {telegramGroupsUpdatedAt
+                        ? `Sincronizado em ${new Date(telegramGroupsUpdatedAt).toLocaleString("pt-BR")}`
+                        : "Inicie o monitor para sincronizar a sua conta do Telegram."}
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => setShowTelegramGroups(false)} aria-label="Fechar lista">×</button>
+                </div>
+                <div className="telegram-picker-list">
+                  {telegramGroups.map((group) => {
+                    const alreadyAdded = (dashboard?.groups ?? []).some((saved) => String(saved.id) === String(group.id));
+                    return (
+                      <article className="telegram-picker-item" key={group.id}>
+                        <div><strong>{group.name}</strong><span>{group.type === "channel" ? "Canal" : "Grupo"} · {group.id}</span></div>
+                        <button type="button" disabled={alreadyAdded || saving} onClick={() => addTelegramGroup(group)}>
+                          {alreadyAdded ? "Adicionado" : "Adicionar"}
+                        </button>
+                      </article>
+                    );
+                  })}
+                  {!telegramGroups.length && <p className="empty-message">Nenhum grupo sincronizado ainda.</p>}
+                </div>
+              </div>
+            )}
 
             {showGroupForm && (
               <form className="group-form" onSubmit={handleGroupSubmit}>

@@ -43,6 +43,7 @@ Abra o endereço exibido pelo Vite, normalmente `http://localhost:5173`.
 
 - `GET /api/health`
 - `GET /api/dashboard`
+- `GET /api/telegram/groups`
 - `POST /api/products`
 - `DELETE /api/products/{id}`
 - `POST /api/groups`

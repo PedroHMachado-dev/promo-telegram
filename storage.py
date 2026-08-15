@@ -41,6 +41,8 @@ DEFAULT_DATA = {
         },
     ],
     "groups": [],
+    "telegram_groups": [],
+    "telegram_groups_updated_at": None,
     "promotions": [],
 }
 
@@ -70,7 +72,13 @@ def load_data():
     with _LOCK:
         _ensure_file()
         with DATA_FILE.open("r", encoding="utf-8") as file:
-            return json.load(file)
+            data = json.load(file)
+        data.setdefault("products", [])
+        data.setdefault("groups", [])
+        data.setdefault("telegram_groups", [])
+        data.setdefault("telegram_groups_updated_at", None)
+        data.setdefault("promotions", [])
+        return data
 
 
 def save_data(data):
@@ -106,4 +114,12 @@ def add_promotion(product, previous_price, current_price, savings, discount, lin
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
         )
+        _write_unlocked(data)
+
+
+def save_telegram_groups(groups):
+    with _LOCK:
+        data = load_data()
+        data["telegram_groups"] = groups
+        data["telegram_groups_updated_at"] = datetime.now(timezone.utc).isoformat()
         _write_unlocked(data)
