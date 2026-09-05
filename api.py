@@ -35,6 +35,12 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self._send_json(204, {})
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/dashboard":
