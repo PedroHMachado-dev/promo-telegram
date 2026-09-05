@@ -4,6 +4,7 @@ import asyncio
 
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 
 from main import analisar_promocao
 from notifier import validar_configuracao_notificacao
@@ -18,25 +19,29 @@ if hasattr(sys.stderr, "reconfigure"):
 
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
 
-if not API_ID or not API_HASH:
-    raise RuntimeError("Preencha API_ID e API_HASH no arquivo .env")
+def obter_cliente():
+    api_id = os.getenv("API_ID")
+    api_hash = os.getenv("API_HASH")
 
-validar_configuracao_notificacao()
+    if not api_id or not api_hash:
+        raise RuntimeError("Preencha API_ID e API_HASH no arquivo .env")
+
+    validar_configuracao_notificacao()
+
+    session_str = os.getenv("TELEGRAM_SESSION_STRING", "").strip()
+    session = StringSession(session_str) if session_str else "telegram_session"
+
+    return TelegramClient(session, int(api_id), api_hash)
 
 
-client = TelegramClient(
-    "telegram_session",
-    API_ID,
-    API_HASH
-)
+client = obter_cliente()
 
 
-async def sincronizar_grupos_telegram():
+async def sincronizar_grupos_telegram(cli=None):
+    c = cli or client
     try:
-        dialogs = await client.get_dialogs()
+        dialogs = await c.get_dialogs()
         grupos = []
         for dialog in dialogs:
             if not (dialog.is_group or dialog.is_channel):
@@ -58,10 +63,10 @@ async def sincronizar_grupos_telegram():
         print(f"⚠️ Não foi possível sincronizar os grupos: {error}")
 
 
-async def sincronizar_periodicamente():
+async def sincronizar_periodicamente(cli=None):
     while True:
         await asyncio.sleep(60)
-        await sincronizar_grupos_telegram()
+        await sincronizar_grupos_telegram(cli)
 
 
 @client.on(events.NewMessage())
@@ -92,19 +97,25 @@ async def nova_mensagem(event):
     await analisar_promocao(mensagem)
 
 
-print("==============================================")
-print("🤖 MONITOR DE PROMOÇÕES")
-print("==============================================")
-grupos_iniciais = load_data().get("groups", [])
-print(f"Grupos monitorados: {len(grupos_iniciais)}")
-for grupo in grupos_iniciais:
-    print(f"  - {grupo['name']} ({grupo['id']})")
-print("Aguardando novas mensagens...")
-print("Pressione CTRL+C para parar.")
-print("==============================================")
+async def iniciar_monitor():
+    print("==============================================")
+    print("🤖 MONITOR DE PROMOÇÕES INICIADO")
+    print("==============================================")
+    grupos_iniciais = load_data().get("groups", [])
+    print(f"Grupos monitorados: {len(grupos_iniciais)}")
+    for grupo in grupos_iniciais:
+        print(f"  - {grupo['name']} ({grupo['id']})")
+    print("Aguardando novas mensagens...")
+    print("==============================================")
+
+    await client.start()
+    await sincronizar_grupos_telegram()
+    asyncio.create_task(sincronizar_periodicamente())
+    await client.run_until_disconnected()
 
 
-client.start()
-client.loop.run_until_complete(sincronizar_grupos_telegram())
-client.loop.create_task(sincronizar_periodicamente())
-client.run_until_disconnected()
+if __name__ == "__main__":
+    try:
+        asyncio.run(iniciar_monitor())
+    except KeyboardInterrupt:
+        print("\n🛑 Monitor finalizado.")

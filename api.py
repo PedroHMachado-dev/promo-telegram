@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -6,8 +7,8 @@ from urllib.parse import urlparse
 from storage import load_data, save_data
 
 
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = int(os.getenv("PORT", "8000"))
 
 
 def slugify(value):
@@ -21,7 +22,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:5173")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -170,9 +171,11 @@ class ApiHandler(BaseHTTPRequestHandler):
         print(f"[API] {self.address_string()} - {format % args}")
 
 
-def run():
-    server = ThreadingHTTPServer((HOST, PORT), ApiHandler)
-    print(f"API disponível em http://{HOST}:{PORT}")
+def run(host=None, port=None):
+    h = host or os.getenv("HOST", "0.0.0.0")
+    p = port or int(os.getenv("PORT", "8000"))
+    server = ThreadingHTTPServer((h, p), ApiHandler)
+    print(f"API disponível em http://{h}:{p}")
     print("Pressione CTRL+C para parar.")
     try:
         server.serve_forever()
