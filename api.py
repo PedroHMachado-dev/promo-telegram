@@ -55,6 +55,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if path in ("/", ""):
+            self._send_json(
+                200,
+                {
+                    "status": "online",
+                    "message": "🤖 Telegram Promoções API está ativa!",
+                    "endpoints": {
+                        "health": "/api/health",
+                        "dashboard": "/api/dashboard",
+                        "groups": "/api/telegram/groups",
+                    },
+                },
+            )
+            return
         if path == "/api/health":
             self._send_json(200, {"status": "online"})
             return
