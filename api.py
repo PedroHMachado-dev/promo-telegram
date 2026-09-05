@@ -1,7 +1,9 @@
 import json
+import mimetypes
 import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 from storage import load_data, save_data
@@ -9,6 +11,7 @@ from storage import load_data, save_data
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+FRONTEND_DIST = Path(__file__).resolve().parent / "frontend" / "dist"
 
 
 def slugify(value):
@@ -28,6 +31,26 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _serve_file(self, file_path):
+        try:
+            with open(file_path, "rb") as f:
+                content = f.read()
+            mime_type, _ = mimetypes.guess_type(str(file_path))
+            mime_type = mime_type or "application/octet-stream"
+            if mime_type.startswith("text/") or mime_type in (
+                "application/javascript",
+                "application/json",
+            ):
+                mime_type += "; charset=utf-8"
+            self.send_response(200)
+            self.send_header("Content-Type", mime_type)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(content)
+        except Exception as e:
+            self._send_json(500, {"error": f"Erro ao servir arquivo: {e}"})
+
     def _read_json(self):
         length = int(self.headers.get("Content-Length", "0"))
         return json.loads(self.rfile.read(length).decode("utf-8"))
@@ -43,53 +66,69 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
-        if path == "/api/dashboard":
-            data = load_data()
-            active_products = [p for p in data["products"] if p.get("active", True)]
-            self._send_json(
-                200,
-                {
-                    "products": active_products,
-                    "groups": data["groups"],
-                    "stats": {
-                        "products": len(active_products),
-                        "groups": len(data["groups"]),
-                        "promotions": len(data["promotions"]),
-                        "status": "online",
+
+        # Endpoints da API
+        if path.startswith("/api/"):
+            if path == "/api/dashboard":
+                data = load_data()
+                active_products = [p for p in data["products"] if p.get("active", True)]
+                self._send_json(
+                    200,
+                    {
+                        "products": active_products,
+                        "groups": data["groups"],
+                        "stats": {
+                            "products": len(active_products),
+                            "groups": len(data["groups"]),
+                            "promotions": len(data["promotions"]),
+                            "status": "online",
+                        },
+                        "recent_promotions": data["promotions"][-10:][::-1],
                     },
-                    "recent_promotions": data["promotions"][-10:][::-1],
-                },
-            )
-            return
-        if path in ("/", ""):
-            self._send_json(
-                200,
-                {
-                    "status": "online",
-                    "message": "🤖 Telegram Promoções API está ativa!",
-                    "endpoints": {
-                        "health": "/api/health",
-                        "dashboard": "/api/dashboard",
-                        "groups": "/api/telegram/groups",
+                )
+                return
+            if path == "/api/health":
+                self._send_json(200, {"status": "online"})
+                return
+            if path == "/api/telegram/groups":
+                data = load_data()
+                self._send_json(
+                    200,
+                    {
+                        "groups": data.get("telegram_groups", []),
+                        "updated_at": data.get("telegram_groups_updated_at"),
+                        "monitor_running": data.get("telegram_groups_updated_at") is not None,
                     },
+                )
+                return
+            self._send_json(404, {"error": "Endpoint não encontrado"})
+            return
+
+        # Servir front-end React estático
+        if FRONTEND_DIST.exists():
+            relative_path = path.lstrip("/")
+            file_path = FRONTEND_DIST / relative_path
+            if file_path.is_file():
+                self._serve_file(file_path)
+                return
+            index_path = FRONTEND_DIST / "index.html"
+            if index_path.exists():
+                self._serve_file(index_path)
+                return
+
+        self._send_json(
+            200,
+            {
+                "status": "online",
+                "message": "🤖 Telegram Promoções API está ativa!",
+                "endpoints": {
+                    "health": "/api/health",
+                    "dashboard": "/api/dashboard",
+                    "groups": "/api/telegram/groups",
                 },
-            )
-            return
-        if path == "/api/health":
-            self._send_json(200, {"status": "online"})
-            return
-        if path == "/api/telegram/groups":
-            data = load_data()
-            self._send_json(
-                200,
-                {
-                    "groups": data.get("telegram_groups", []),
-                    "updated_at": data.get("telegram_groups_updated_at"),
-                    "monitor_running": data.get("telegram_groups_updated_at") is not None,
-                },
-            )
-            return
-        self._send_json(404, {"error": "Endpoint não encontrado"})
+            },
+        )
+        return
 
     def do_POST(self):
         path = urlparse(self.path).path

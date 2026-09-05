@@ -9,5 +9,4 @@ __pycache__/
 *.py[cod]
 data/app_data.json
 frontend/node_modules/
-frontend/dist/
 .vite/
