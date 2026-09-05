@@ -26,7 +26,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(body)
@@ -189,6 +189,51 @@ class ApiHandler(BaseHTTPRequestHandler):
             data["groups"].append(group)
             save_data(data)
             self._send_json(201, group)
+        except (ValueError, TypeError, json.JSONDecodeError) as error:
+            self._send_json(400, {"error": str(error)})
+
+    def do_PUT(self):
+        path = urlparse(self.path).path
+        match = re.fullmatch(r"/api/products/([^/]+)", path)
+        if not match:
+            self._send_json(404, {"error": "Endpoint não encontrado"})
+            return
+
+        product_id = match.group(1)
+        try:
+            payload = self._read_json()
+            name = str(payload.get("name", "")).strip()
+            max_price = float(payload.get("max_price", 0))
+            if not name or max_price <= 0:
+                raise ValueError("Nome e preço máximo são obrigatórios")
+
+            keywords = payload.get("keywords")
+            if isinstance(keywords, str):
+                keywords = [item.strip() for item in keywords.split(",") if item.strip()]
+            elif isinstance(keywords, list):
+                keywords = [str(item).strip() for item in keywords if str(item).strip()]
+            else:
+                keywords = [name]
+
+            if not keywords:
+                keywords = [name]
+
+            data = load_data()
+            product = next((p for p in data["products"] if p["id"] == product_id), None)
+            if not product:
+                self._send_json(404, {"error": "Produto não encontrado"})
+                return
+
+            product["name"] = name
+            product["description"] = str(payload.get("description", "")).strip() or name
+            product["keywords"] = keywords
+            product["max_price"] = max_price
+            product["icon"] = str(payload.get("icon", product.get("icon", "📦")))
+            if "active" in payload:
+                product["active"] = bool(payload["active"])
+
+            save_data(data)
+            self._send_json(200, product)
         except (ValueError, TypeError, json.JSONDecodeError) as error:
             self._send_json(400, {"error": str(error)})
 

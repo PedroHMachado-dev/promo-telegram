@@ -4,9 +4,10 @@ import PixelCard from "./components/PixelCard/PixelCard";
 import "./App.css";
 
 const EMPTY_FORM = {
+  id: null,
   name: "",
   description: "",
-  keywords: "",
+  keywords: [],
   max_price: "",
   icon: "📦",
 };
@@ -25,6 +26,7 @@ function App() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [keywordInput, setKeywordInput] = useState("");
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupForm, setGroupForm] = useState(EMPTY_GROUP_FORM);
   const [showTelegramGroups, setShowTelegramGroups] = useState(false);
@@ -59,19 +61,83 @@ function App() {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   };
 
+  const handleAddKeyword = () => {
+    const trimmed = keywordInput.trim();
+    if (!trimmed) return;
+    if (!form.keywords.includes(trimmed)) {
+      setForm((current) => ({
+        ...current,
+        keywords: [...current.keywords, trimmed],
+      }));
+    }
+    setKeywordInput("");
+  };
+
+  const handleRemoveKeyword = (keywordToRemove) => {
+    setForm((current) => ({
+      ...current,
+      keywords: current.keywords.filter((k) => k !== keywordToRemove),
+    }));
+  };
+
+  const handleKeywordKeyDown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleAddKeyword();
+    }
+  };
+
+  const startEditingProduct = (product) => {
+    setForm({
+      id: product.id,
+      name: product.name,
+      description: product.description || "",
+      keywords: Array.isArray(product.keywords) ? [...product.keywords] : [product.name],
+      max_price: product.max_price,
+      icon: product.icon || "📦",
+    });
+    setKeywordInput("");
+    setShowForm(true);
+    setTimeout(() => {
+      const formEl = document.querySelector(".product-form");
+      if (formEl) {
+        formEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 50);
+  };
+
+  const handleCancelForm = () => {
+    setForm(EMPTY_FORM);
+    setKeywordInput("");
+    setShowForm(false);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!form.name.trim()) {
+      setError("Informe o nome do produto.");
+      return;
+    }
+    if (!form.keywords || form.keywords.length === 0) {
+      setError("Adicione pelo menos uma palavra-chave para o monitoramento.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const response = await fetch("/api/products", {
-        method: "POST",
+      const isEditing = Boolean(form.id);
+      const url = isEditing ? `/api/products/${form.id}` : "/api/products";
+      const method = isEditing ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Não foi possível salvar");
       setForm(EMPTY_FORM);
+      setKeywordInput("");
       setShowForm(false);
       await loadDashboard();
     } catch (requestError) {
@@ -86,6 +152,9 @@ function App() {
     try {
       const response = await fetch(`/api/products/${product.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Não foi possível remover o produto");
+      if (form.id === product.id) {
+        handleCancelForm();
+      }
       await loadDashboard();
     } catch (requestError) {
       setError(requestError.message);
@@ -272,19 +341,128 @@ function App() {
           <section>
             <div className="section-header">
               <div><span className="section-label">MONITORAMENTO</span><h2>Seus produtos</h2></div>
-              <button type="button" onClick={() => setShowForm((visible) => !visible)}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (showForm) {
+                    handleCancelForm();
+                  } else {
+                    setForm(EMPTY_FORM);
+                    setKeywordInput("");
+                    setShowForm(true);
+                  }
+                }}
+              >
                 {showForm ? "Cancelar" : "+ Adicionar produto"}
               </button>
             </div>
 
             {showForm && (
               <form className="product-form" onSubmit={handleSubmit}>
-                <label>Nome<input name="name" value={form.name} onChange={handleChange} required /></label>
-                <label>Descrição<input name="description" value={form.description} onChange={handleChange} /></label>
-                <label>Preço máximo<input name="max_price" type="number" min="0.01" step="0.01" value={form.max_price} onChange={handleChange} required /></label>
-                <label>Ícone<input name="icon" value={form.icon} onChange={handleChange} maxLength="4" /></label>
-                <label className="keywords-field">Palavras-chave<input name="keywords" value={form.keywords} onChange={handleChange} placeholder="separadas por vírgula" /></label>
-                <button type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar produto"}</button>
+                <div className="form-header-badge">
+                  <span>{form.id ? "✏️ EDITANDO PRODUTO" : "✨ NOVO PRODUTO"}</span>
+                </div>
+
+                <label>
+                  Nome
+                  <input
+                    name="name"
+                    value={form.name}
+                    onChange={handleChange}
+                    placeholder="Ex.: Monitor Gamer 144Hz"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Descrição
+                  <input
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    placeholder="Ex.: Monitor IPS 24 polegadas"
+                  />
+                </label>
+
+                <label>
+                  Preço máximo (R$)
+                  <input
+                    name="max_price"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.max_price}
+                    onChange={handleChange}
+                    placeholder="Ex.: 899.90"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Ícone / Emoji
+                  <input
+                    name="icon"
+                    value={form.icon}
+                    onChange={handleChange}
+                    maxLength="4"
+                    placeholder="📦"
+                  />
+                </label>
+
+                <div className="keywords-manager">
+                  <label>
+                    Palavras-chave de busca
+                    <span className="keywords-hint">
+                      (O robô usará essas palavras para encontrar as promoções no chat)
+                    </span>
+                  </label>
+                  <div className="keywords-input-row">
+                    <input
+                      type="text"
+                      value={keywordInput}
+                      onChange={(e) => setKeywordInput(e.target.value)}
+                      onKeyDown={handleKeywordKeyDown}
+                      placeholder="Digite uma palavra-chave (ex: 32gn600) e clique em Adicionar"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddKeyword}
+                      className="add-keyword-button"
+                    >
+                      + Adicionar
+                    </button>
+                  </div>
+
+                  <div className="keyword-tags-container">
+                    {form.keywords.map((kw, idx) => (
+                      <span key={idx} className="keyword-chip">
+                        <span className="chip-text">{kw}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveKeyword(kw)}
+                          className="chip-remove"
+                          aria-label={`Remover ${kw}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {form.keywords.length === 0 && (
+                      <span className="no-keywords-message">
+                        Nenhuma palavra-chave adicionada ainda. Digite acima e clique em <strong>+ Adicionar</strong> (ou pressione Enter).
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-action-buttons">
+                  <button type="button" className="cancel-form-button" onClick={handleCancelForm}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="submit-form-button" disabled={saving}>
+                    {saving ? "Salvando..." : form.id ? "💾 Salvar Alterações" : "Salvar produto"}
+                  </button>
+                </div>
               </form>
             )}
 
@@ -298,11 +476,43 @@ function App() {
                     variant={["blue", "yellow", "pink"][index % 3]}
                     className="product-card product-pixel-card"
                   >
-                    <button className="remove-product" type="button" onClick={() => removeProduct(product)} aria-label={`Remover ${product.name}`}>×</button>
-                    <div className="product-icon">{product.icon}</div>
+                    <div className="card-actions">
+                      <button
+                        className="edit-product"
+                        type="button"
+                        onClick={() => startEditingProduct(product)}
+                        aria-label={`Editar ${product.name}`}
+                        title="Editar produto"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="remove-product"
+                        type="button"
+                        onClick={() => removeProduct(product)}
+                        aria-label={`Remover ${product.name}`}
+                        title="Remover produto"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="product-icon">{product.icon || "📦"}</div>
                     <h3>{product.name}</h3>
                     <p>{product.description}</p>
-                    <div className="price"><span>PREÇO MÁXIMO</span><strong>{currency.format(product.max_price)}</strong></div>
+
+                    <div className="product-keywords-preview">
+                      {(product.keywords || []).map((kw, i) => (
+                        <span key={i} className="card-keyword-tag">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="price">
+                      <span>PREÇO MÁXIMO</span>
+                      <strong>{currency.format(product.max_price)}</strong>
+                    </div>
                     <div className="product-status"><span>●</span> Monitorando</div>
                   </PixelCard>
                 ))}
